@@ -145,6 +145,7 @@ class InstallScriptTests(unittest.TestCase):
             FLEXILE_TELEMETRY_URL=self.server.url + "/i/v0/e/",
             FLEXILE_SYSTEM_EXTENSIONS_DIR=self.system_dir,
             NO_COLOR="1",
+            FLEXILE_DEBUG="1",
         )
         env.pop("FLEXILE_NO_TELEMETRY", None)
         if not telemetry:

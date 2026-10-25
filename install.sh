@@ -83,8 +83,10 @@ main() {
   # Unpack next to the final folder, then swap: an interrupted install never leaves half a panel.
   local staged="$ext_dir/.flexile-install-$$"
   rm -rf "$staged"
-  unzip -q "$tmp/flexile.zip" -d "$staged" 2>/dev/null && is_flexile "$staged" ||
-    { rm -rf "$staged"; fail unzip_failed "Couldn't unpack Flexile. Check that your disk has 500 MB free and try again."; }
+  if ! { unzip -q "$tmp/flexile.zip" -d "$staged" 2>/dev/null && is_flexile "$staged"; }; then
+    rm -rf "$staged"
+    fail unzip_failed "Couldn't unpack Flexile. Check that your disk has 500 MB free and try again."
+  fi
 
   local entry
   for entry in "$ext_dir"/* "$ext_dir"/.[!.]*; do

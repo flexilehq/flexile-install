@@ -11,6 +11,7 @@
 #   FLEXILE_API_BASE         release API (default https://api.flexile.io), used by the tests
 #   FLEXILE_TELEMETRY_URL    PostHog capture URL, used by the tests
 #   FLEXILE_SYSTEM_EXTENSIONS_DIR  machine-wide CEP folder to check, used by the tests
+#   FLEXILE_DEBUG=1          print the full error when something unexpected fails
 #
 # This file is plain ASCII on purpose (Windows PowerShell 5.1 may read it in the wrong encoding).
 # It runs in a script block and never calls exit: `irm | iex` runs inside the user's own window.
@@ -42,7 +43,7 @@
     $version = 'unknown'
     $tmp = $null
 
-    function Send-InstallEvent([string]$name, [string]$errorCode) {
+    function Send-InstallEvent([string]$name, [string]$errorCode, [string]$errorDetail = '') {
         if ($env:FLEXILE_NO_TELEMETRY) { return }
         try {
             $body = @{
@@ -50,7 +51,7 @@
                 event       = $name
                 distinct_id = 'install-' + [guid]::NewGuid().ToString()
                 properties  = @{
-                    os = 'windows'; version = $version; error_code = $errorCode; script_version = $scriptVersion
+                    os = 'windows'; version = $version; error_code = $errorCode; error_detail = $errorDetail; script_version = $scriptVersion
                     '$process_person_profile' = $false; '$geoip_disable' = $true
                 }
             } | ConvertTo-Json -Depth 4 -Compress
@@ -79,6 +80,7 @@
         }
     }
 
+    $detail = ''
     try {
         Write-Host "${sparkles}Installing Flexile for After Effects$dots"
 
@@ -172,10 +174,13 @@
             $code = $parts[1]; $message = $parts[2]
         } else {
             $code = 'unexpected'; $message = 'Something went wrong while installing Flexile. Please try again.'
+            # Exception type and script line only: no paths or user names leave the machine.
+            $detail = '{0} at line {1}' -f $_.Exception.GetType().Name, $_.InvocationInfo.ScriptLineNumber
+            if ($env:FLEXILE_DEBUG) { Write-Host ($_ | Out-String); Write-Host $_.InvocationInfo.PositionMessage }
         }
         Write-Host "$cross $message" -ForegroundColor Red
         Write-Host "  Help: $helpUrl"
-        Send-InstallEvent 'install_script_failed' $code
+        Send-InstallEvent 'install_script_failed' $code $detail
     } finally {
         if ($tmp -and (Test-Path -LiteralPath $tmp)) {
             Remove-Item -LiteralPath $tmp -Recurse -Force -ErrorAction SilentlyContinue
