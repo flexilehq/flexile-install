@@ -1,0 +1,43 @@
+name: Test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  install:
+    # Each test runs the real one-liner (`curl | bash`, `irm | iex`) against a local fake release API.
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      # Windows runs both Windows PowerShell 5.1 (`powershell`) and PowerShell 7 (`pwsh`).
+      - run: python tests/test_install.py
+
+  lint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - run: shellcheck install.sh
+      - name: install.ps1 is plain ASCII
+        run: "! LC_ALL=C grep -n '[^[:print:][:space:]]' install.ps1"
+      - name: PSScriptAnalyzer
+        shell: pwsh
+        run: |
+          Install-Module PSScriptAnalyzer -Force -Scope CurrentUser
+          $issues = Invoke-ScriptAnalyzer -Path install.ps1 -Severity Error,Warning -ExcludeRule PSAvoidUsingWriteHost
+          $issues | Format-Table -AutoSize
+          if ($issues) { exit 1 }
