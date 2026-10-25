@@ -38,6 +38,7 @@ jobs:
         shell: pwsh
         run: |
           Install-Module PSScriptAnalyzer -Force -Scope CurrentUser
-          $issues = Invoke-ScriptAnalyzer -Path install.ps1 -Severity Error,Warning -ExcludeRule PSAvoidUsingWriteHost
-          $issues | Format-Table -AutoSize
+          # Write-Host is the point (console output), and ShouldProcess has no meaning for `irm | iex`.
+          $issues = Invoke-ScriptAnalyzer -Path install.ps1 -Severity Error,Warning -ExcludeRule PSAvoidUsingWriteHost,PSUseShouldProcessForStateChangingFunctions
+          $issues | Format-List RuleName, Line, Message
           if ($issues) { exit 1 }

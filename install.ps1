@@ -56,7 +56,9 @@
                 }
             } | ConvertTo-Json -Depth 4 -Compress
             Invoke-RestMethod -Uri $telemetryUrl -Method Post -ContentType 'application/json' -Body $body -TimeoutSec 5 -UseBasicParsing | Out-Null
-        } catch { }
+        } catch {
+            $null = $_ # telemetry never blocks the install
+        }
     }
 
     # Every failure ends here as "FLEXILE|code|message", so the user sees one plain sentence.
@@ -72,6 +74,7 @@
 
     # A junction or symbolic link (a developer build): delete the link only, never what it points to.
     function Remove-Folder([string]$path) {
+        if (-not (Test-Path -LiteralPath $path)) { return }
         $item = Get-Item -LiteralPath $path -Force
         if ($item.Attributes -band [IO.FileAttributes]::ReparsePoint) {
             [IO.Directory]::Delete($path)
@@ -86,7 +89,9 @@
 
         try {
             [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
-        } catch { }
+        } catch {
+            $null = $_ # PowerShell 7 already uses TLS 1.2+
+        }
 
         try {
             $meta = Invoke-RestMethod -Uri "$apiBase/api/product/latest/flexile" -TimeoutSec 30 -UseBasicParsing
@@ -108,7 +113,14 @@
         } catch {
             Stop-Install 'download_failed' "The download didn't finish. Check your internet connection and try again."
         }
-        if ((Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash.ToLowerInvariant() -ne $sha256) {
+        # .NET instead of Get-FileHash: 5.1 started from PowerShell 7 can't load that module.
+        $stream = [IO.File]::OpenRead($zip)
+        try {
+            $hash = -join ([Security.Cryptography.SHA256]::Create().ComputeHash($stream) | ForEach-Object { $_.ToString('x2') })
+        } finally {
+            $stream.Dispose()
+        }
+        if ($hash -ne $sha256) {
             Stop-Install 'checksum_mismatch' 'The download is damaged (checksum mismatch), so nothing was installed. Please try again.'
         }
         Write-Host "  $ok " -ForegroundColor Green -NoNewline
@@ -120,7 +132,8 @@
             Stop-Install 'install_failed' "Couldn't create your Adobe extensions folder."
         }
         # Unpack next to the final folder, then swap: an interrupted install never leaves half a panel.
-        $staged = Join-Path $extDir ".flexile-install-$PID"
+        $stagedName = ".flexile-install-$PID"
+        $staged = Join-Path $extDir $stagedName
         if (Test-Path -LiteralPath $staged) { Remove-Folder $staged }
         try {
             Add-Type -AssemblyName System.IO.Compression.FileSystem
@@ -135,8 +148,9 @@
         }
 
         try {
+            # By name: $extDir can be a short 8.3 path (C:\Users\RUNNER~1) while FullName is the long one.
             Get-ChildItem -LiteralPath $extDir -Directory -Force |
-                Where-Object { $_.FullName -ne $staged -and (Test-Flexile $_.FullName) } |
+                Where-Object { $_.Name -ne $stagedName -and (Test-Flexile $_.FullName) } |
                 ForEach-Object { Remove-Folder $_.FullName }
         } catch {
             Remove-Folder $staged
